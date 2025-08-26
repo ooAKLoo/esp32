@@ -38,6 +38,7 @@ const byte DNS_PORT = 53;
 WiFiServer audioServer(8888);  // 音频数据端口
 WiFiClient audioClient;
 bool streaming = false;
+bool recording_active = false;
 
 // 状态服务器（用于客户端发现设备）
 WiFiServer statusServer(8889);  // 状态查询端口
@@ -160,12 +161,31 @@ void handleRoot() {
   server.send(200, "text/html", configPage);
 }
 
+// 处理录音开始命令
+void handleStartRecording() {
+  if (audioClient && audioClient.connected()) {
+    recording_active = true;
+    Serial.println("开始录音");
+    server.send(200, "text/plain", "Recording started");
+  } else {
+    server.send(400, "text/plain", "No client connected");
+  }
+}
+
+// 处理录音停止命令
+void handleStopRecording() {
+  recording_active = false;
+  Serial.println("停止录音");
+  server.send(200, "text/plain", "Recording stopped");
+}
+
 // 处理状态API
 void handleStatus() {
   StaticJsonDocument<200> doc;
   doc["device"] = DEVICE_NAME;
   doc["ip"] = WiFi.localIP().toString();
   doc["streaming"] = streaming;
+  doc["recording"] = recording_active;
   doc["connected"] = audioClient.connected();
   
   String response;
@@ -375,12 +395,15 @@ void setup() {
           html += "<p>设备名称: " + String(DEVICE_NAME) + "</p>";
           html += "<p>IP地址: " + WiFi.localIP().toString() + "</p>";
           html += "<p>音频端口: 8888</p>";
-          html += "<p>状态: " + String(streaming ? "正在流传输" : "空闲") + "</p>";
+          html += "<p>状态: " + String(streaming ? "已连接" : "空闲") + "</p>";
+          html += "<p>录音: " + String(recording_active ? "录音中" : "未录音") + "</p>";
           html += "<p>客户端: " + String(audioClient.connected() ? "已连接" : "未连接") + "</p>";
           html += "</body></html>";
           server.send(200, "text/html", html);
         });
         server.on("/status", handleStatus);
+        server.on("/start_recording", HTTP_POST, handleStartRecording);
+        server.on("/stop_recording", HTTP_POST, handleStopRecording);
         server.begin();
         
         Serial.println("系统就绪!");
@@ -449,8 +472,8 @@ void loop() {
       audioClient.stop();
     }
     
-    // 发送音频数据
-    if (streaming && audioClient && audioClient.connected()) {
+    // 发送音频数据（仅在录音激活时）
+    if (streaming && audioClient && audioClient.connected() && recording_active) {
       size_t bytesIn = 0;
       esp_err_t result = i2s_read(I2S_PORT, &sBuffer, bufferLen * sizeof(int32_t), &bytesIn, portMAX_DELAY);
       
@@ -471,7 +494,7 @@ void loop() {
         static unsigned long lastDebug = 0;
         if (millis() - lastDebug > 1000) {
           lastDebug = millis();
-          Serial.printf("正在传输音频数据: %d 字节\n", packetSize);
+          Serial.printf("正在录音传输音频数据: %d 字节\n", packetSize);
         }
       }
     }
