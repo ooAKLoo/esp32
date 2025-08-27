@@ -71,9 +71,10 @@ struct TouchState {
   uint16_t startY;
   unsigned long lastClickTime;
   bool waitingForDoubleClick;
+  bool swipeConverted;  // 标记滑动手势是否被转换
 };
 
-TouchState touchState = {false, 0, 0, 0, 0, 0, 0, false};
+TouchState touchState = {false, 0, 0, 0, 0, 0, 0, false, false};
 
 // 手势类型枚举
 enum GestureType {
@@ -289,13 +290,33 @@ GestureType recognizeGesture() {
         touchState.lastClickTime = currentTime;
       }
     } else if (distance >= SWIPE_MIN_DISTANCE && touchDuration < SWIPE_MAX_TIME_MS) {
-      // 滑动手势
-      if (abs(deltaX) > abs(deltaY)) {
-        // 水平滑动
-        gesture = (deltaX > 0) ? GESTURE_SWIPE_RIGHT : GESTURE_SWIPE_LEFT;
+      // 滑动手势 - 根据设备方向智能识别
+      Orientation orientation = getOrientation();
+      
+      if (orientation == ORIENTATION_VERTICAL) {
+        // 设备垂直时：只识别上下滑动
+        if (abs(deltaY) > abs(deltaX)) {
+          // 垂直滑动
+          gesture = (deltaY > 0) ? GESTURE_SWIPE_DOWN : GESTURE_SWIPE_UP;
+          touchState.swipeConverted = false;
+        }
+        // 忽略水平滑动
+      } else if (orientation == ORIENTATION_HORIZONTAL) {
+        // 设备水平时：只识别上下滑动并转换为左右滑动
+        if (abs(deltaY) > abs(deltaX)) {
+          // 用户在窄屏上做了上下滑动，转换为左右滑动
+          gesture = (deltaY > 0) ? GESTURE_SWIPE_RIGHT : GESTURE_SWIPE_LEFT;
+          touchState.swipeConverted = true; // 标记为转换的手势
+        }
+        // 忽略原本的左右滑动
       } else {
-        // 垂直滑动
-        gesture = (deltaY > 0) ? GESTURE_SWIPE_DOWN : GESTURE_SWIPE_UP;
+        // 方向未知时，使用传统识别方式
+        if (abs(deltaX) > abs(deltaY)) {
+          gesture = (deltaX > 0) ? GESTURE_SWIPE_RIGHT : GESTURE_SWIPE_LEFT;
+        } else {
+          gesture = (deltaY > 0) ? GESTURE_SWIPE_DOWN : GESTURE_SWIPE_UP;
+        }
+        touchState.swipeConverted = false;
       }
       touchState.waitingForDoubleClick = false;
     }
@@ -395,13 +416,25 @@ void displayGesture(GestureType gesture) {
       case GESTURE_SWIPE_LEFT:
         gfx->setTextColor(RGB565_MAGENTA);
         gfx->println("Swipe\nLeft!");
-        Serial.println("Gesture: Swipe Left");
+        if (touchState.swipeConverted) {
+          gfx->setTextSize(1);
+          gfx->println("(from up)");
+          Serial.println("Gesture: Swipe Left (converted from swipe up)");
+        } else {
+          Serial.println("Gesture: Swipe Left");
+        }
         break;
         
       case GESTURE_SWIPE_RIGHT:
         gfx->setTextColor(RGB565_MAGENTA);
         gfx->println("Swipe\nRight!");
-        Serial.println("Gesture: Swipe Right");
+        if (touchState.swipeConverted) {
+          gfx->setTextSize(1);
+          gfx->println("(from down)");
+          Serial.println("Gesture: Swipe Right (converted from swipe down)");
+        } else {
+          Serial.println("Gesture: Swipe Right");
+        }
         break;
     }
     
@@ -478,12 +511,14 @@ void setup() {
   gfx->setCursor(10, 60);
   gfx->setTextSize(1);
   gfx->setTextColor(RGB565_GRAY);
-  gfx->println("Try:");
-  gfx->println("- Single Click");
-  gfx->println("- Double Click");
-  gfx->println("- Swipe U/D/L/R");
+  gfx->println("Gestures:");
+  gfx->println("- Click/Double Click");
+  gfx->println("- Vertical: Swipe U/D");
+  gfx->println("- Horizontal: U/D->L/R");
+  gfx->println("  (only vertical)");
   
   Serial.println("Setup complete. Ready for gestures!");
+  Serial.println("Note: In horizontal mode, only vertical swipes are recognized (converted to L/R).");
 }
 
 void loop() {
