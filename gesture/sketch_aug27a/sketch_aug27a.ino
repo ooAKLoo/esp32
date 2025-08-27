@@ -1,15 +1,17 @@
 /*
  * ESP32-C6-Touch-LCD-1.47 手势识别 Demo
- * 功能：识别单击、双击、滑动（上下左右）手势
+ * 功能：识别单击、双击、滑动（上下左右）手势 + 方向检测（垂直/水平）
  * 
  * 依赖库：
  * - GFX_Library_for_Arduino (v1.5.9) - 在线安装
  * - esp_lcd_touch_axs5106l - 离线安装
+ * - FastIMU (v1.2.8) - 在线安装
  */
 
 #include <Arduino_GFX_Library.h>
 #include "esp_lcd_touch_axs5106l.h"
 #include <Wire.h>
+#include "FastIMU.h"
 
 // 屏幕配置
 #define GFX_BL 23  // 背光引脚
@@ -32,6 +34,21 @@
 
 // 自定义颜色（如果库中没有定义）
 #define RGB565_GRAY 0x8410  // 灰色
+
+// IMU 配置
+#define IMU_ADDRESS 0x6B  // QMI8658 I2C 地址
+QMI8658 IMU;              // IMU 对象
+
+// IMU 数据
+calData calib = { 0 };    // 校准数据
+AccelData accelData;      // 加速度计数据
+
+// 方向枚举
+enum Orientation {
+  ORIENTATION_VERTICAL,
+  ORIENTATION_HORIZONTAL,
+  ORIENTATION_UNKNOWN
+};
 
 // 屏幕驱动配置
 Arduino_DataBus *bus = new Arduino_HWSPI(15 /* DC */, 14 /* CS */, 1 /* SCK */, 2 /* MOSI */);
@@ -177,6 +194,42 @@ void initTouch() {
   Serial.println("Touch screen initialized with BSP driver");
 }
 
+// 初始化 IMU
+void initIMU() {
+  int err = IMU.init(calib, IMU_ADDRESS);
+  if (err != 0) {
+    Serial.print("IMU init failed, error: ");
+    Serial.println(err);
+  } else {
+    Serial.println("IMU initialized successfully");
+  }
+}
+
+// 获取设备方向
+Orientation getOrientation() {
+  IMU.update();
+  IMU.getAccel(&accelData);
+  
+  // 判断设备方向（基于重力方向）
+  // 垂直：Z轴接近 -1g 或 +1g
+  // 水平：X轴或Y轴接近 -1g 或 +1g
+  
+  float absX = fabs(accelData.accelX);
+  float absY = fabs(accelData.accelY);
+  float absZ = fabs(accelData.accelZ);
+  
+  // 找出最大值，它指示重力方向
+  if (absZ > absX && absZ > absY && absZ > 0.7) {
+    // Z轴主导 - 设备垂直
+    return ORIENTATION_VERTICAL;
+  } else if ((absX > absZ || absY > absZ) && (absX > 0.7 || absY > 0.7)) {
+    // X轴或Y轴主导 - 设备水平
+    return ORIENTATION_HORIZONTAL;
+  }
+  
+  return ORIENTATION_UNKNOWN;
+}
+
 // 读取触摸坐标
 bool readTouch(uint16_t &x, uint16_t &y) {
   if (!touch_initialized) {
@@ -268,11 +321,45 @@ void displayGesture(GestureType gesture) {
   static GestureType lastGesture = GESTURE_NONE;
   static unsigned long gestureTime = 0;
   
+  // 获取并显示设备方向
+  Orientation orientation = getOrientation();
+  
+  // 显示方向状态（始终显示）
+  gfx->fillRect(10, 240, 152, 30, RGB565_BLACK);
+  gfx->setCursor(10, 250);
+  gfx->setTextSize(1);
+  gfx->setTextColor(RGB565_ORANGE);
+  gfx->print("Orient: ");
+  
+  switch(orientation) {
+    case ORIENTATION_VERTICAL:
+      gfx->println("Vertical");
+      Serial.println("Orientation: Vertical");
+      break;
+    case ORIENTATION_HORIZONTAL:
+      gfx->println("Horizontal");
+      Serial.println("Orientation: Horizontal");
+      break;
+    default:
+      gfx->println("Unknown");
+      Serial.println("Orientation: Unknown");
+      break;
+  }
+  
+  // 显示加速度计数据（调试用）
+  gfx->setCursor(10, 265);
+  gfx->setTextSize(1);
+  gfx->setTextColor(RGB565_GRAY);
+  char buffer[40];
+  snprintf(buffer, sizeof(buffer), "X:%.1f Y:%.1f Z:%.1f", 
+           accelData.accelX, accelData.accelY, accelData.accelZ);
+  gfx->print(buffer);
+  
   if (gesture != GESTURE_NONE) {
     lastGesture = gesture;
     gestureTime = millis();
     
-    // 清屏
+    // 清屏（手势区域）
     gfx->fillRect(10, 100, 152, 120, RGB565_BLACK);
     
     // 设置文本属性
@@ -376,6 +463,9 @@ void setup() {
   
   // 初始化触摸屏
   initTouch();
+  
+  // 初始化IMU
+  initIMU();
   
   // 显示标题
   gfx->setCursor(10, 10);
