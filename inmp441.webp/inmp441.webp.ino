@@ -3,7 +3,7 @@
 #include <WebServer.h>
 #include <Preferences.h>
 #include <DNSServer.h>
-#include <ESPmDNS.h>  // 添加mDNS支持
+#include <ESPmDNS.h>      // 添加mDNS支持
 #include <ArduinoJson.h>  // 添加JSON支持
 
 // WiFi配置存储
@@ -14,8 +14,8 @@ Preferences preferences;
 #define I2S_SD 32
 #define I2S_SCK 33
 #define I2S_PORT I2S_NUM_0
-#define I2S_SAMPLE_RATE   (16000)
-#define I2S_SAMPLE_BITS   (32)
+#define I2S_SAMPLE_RATE (16000)
+#define I2S_SAMPLE_BITS (32)
 #define bufferLen 256
 
 int32_t sBuffer[bufferLen];
@@ -47,7 +47,7 @@ WiFiServer statusServer(8889);  // 状态查询端口
 WiFiUDP udp;
 const int UDP_PORT = 8890;
 unsigned long lastBroadcast = 0;
-const unsigned long BROADCAST_INTERVAL = 2000; // 每2秒广播一次
+const unsigned long BROADCAST_INTERVAL = 2000;  // 每2秒广播一次
 
 // 运行模式
 enum Mode {
@@ -141,7 +141,7 @@ void i2s_install() {
     .tx_desc_auto_clear = false,
     .fixed_mclk = 0
   };
-  
+
   i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
 }
 
@@ -152,7 +152,7 @@ void i2s_setpin() {
     .data_out_num = -1,
     .data_in_num = I2S_SD
   };
-  
+
   i2s_set_pin(I2S_PORT, &pin_config);
 }
 
@@ -187,7 +187,7 @@ void handleStatus() {
   doc["streaming"] = streaming;
   doc["recording"] = recording_active;
   doc["connected"] = audioClient.connected();
-  
+
   String response;
   serializeJson(doc, response);
   server.send(200, "application/json", response);
@@ -197,15 +197,15 @@ void handleStatus() {
 void handleConfig() {
   String ssid = server.arg("ssid");
   String password = server.arg("password");
-  
+
   if (ssid.length() > 0) {
     preferences.putString("ssid", ssid);
     preferences.putString("password", password);
     preferences.putBool("configured", true);
-    
+
     Serial.println("保存WiFi配置:");
     Serial.println("SSID: " + ssid);
-    
+
     server.send(200, "text/html", successPage);
     delay(5000);
     ESP.restart();
@@ -231,22 +231,22 @@ void handleNotFound() {
 // 设置AP模式
 void setupAP() {
   Serial.println("启动AP模式...");
-  
+
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS);
-  
+
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP地址: ");
   Serial.println(IP);
-  
+
   dnsServer.start(DNS_PORT, "*", IP);
-  
+
   server.on("/", handleRoot);
   server.on("/config", HTTP_POST, handleConfig);
   server.on("/reset", HTTP_POST, handleReset);
   server.on("/status", handleStatus);
   server.onNotFound(handleNotFound);
-  
+
   server.begin();
   Serial.println("Web服务器已启动");
   Serial.printf("请连接WiFi: %s\n", AP_SSID);
@@ -258,7 +258,7 @@ void setupAP() {
 bool connectWiFi(String ssid, String password) {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid.c_str(), password.c_str());
-  
+
   Serial.print("连接到WiFi");
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
@@ -266,7 +266,7 @@ bool connectWiFi(String ssid, String password) {
     Serial.print(".");
     attempts++;
   }
-  
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi连接成功!");
     Serial.print("IP地址: ");
@@ -285,7 +285,7 @@ void setupMDNS() {
     // 添加服务
     MDNS.addService("esp32-audio", "tcp", 8888);
     MDNS.addService("http", "tcp", 80);
-    
+
     // 添加TXT记录
     MDNS.addServiceTxt("esp32-audio", "tcp", "version", "1.0");
     MDNS.addServiceTxt("esp32-audio", "tcp", "device", DEVICE_NAME);
@@ -298,7 +298,7 @@ void setupMDNS() {
 void sendUDPBroadcast() {
   if (millis() - lastBroadcast > BROADCAST_INTERVAL) {
     lastBroadcast = millis();
-    
+
     StaticJsonDocument<256> doc;
     doc["type"] = "esp32-audio-device";
     doc["name"] = DEVICE_NAME;
@@ -306,17 +306,17 @@ void sendUDPBroadcast() {
     doc["port"] = 8888;
     doc["status_port"] = 8889;
     doc["streaming"] = streaming;
-    
+
     String message;
     serializeJson(doc, message);
-    
+
     IPAddress broadcastIP = WiFi.localIP();
-    broadcastIP[3] = 255; // 设置为广播地址
-    
+    broadcastIP[3] = 255;  // 设置为广播地址
+
     udp.beginPacket(broadcastIP, UDP_PORT);
     udp.print(message);
     udp.endPacket();
-    
+
     Serial.println("发送UDP广播: " + message);
   }
 }
@@ -326,7 +326,7 @@ void handleStatusClients() {
   WiFiClient statusClient = statusServer.available();
   if (statusClient) {
     Serial.println("状态查询客户端已连接");
-    
+
     StaticJsonDocument<256> doc;
     doc["device"] = DEVICE_NAME;
     doc["ip"] = WiFi.localIP().toString();
@@ -334,16 +334,16 @@ void handleStatusClients() {
     doc["streaming"] = streaming;
     doc["sample_rate"] = I2S_SAMPLE_RATE;
     doc["bits_per_sample"] = 16;
-    
+
     String response;
     serializeJson(doc, response);
-    
+
     statusClient.println("HTTP/1.1 200 OK");
     statusClient.println("Content-Type: application/json");
     statusClient.println("Connection: close");
     statusClient.println();
     statusClient.println(response);
-    
+
     delay(10);
     statusClient.stop();
   }
@@ -352,42 +352,42 @@ void handleStatusClients() {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\nESP32 音频流设备 v2.0");
-  
+
   preferences.begin("wifi", false);
-  
+
   bool configured = preferences.getBool("configured", false);
-  
+
   if (configured) {
     String ssid = preferences.getString("ssid", "");
     String password = preferences.getString("password", "");
-    
+
     if (ssid.length() > 0) {
       Serial.println("找到保存的WiFi配置，尝试连接...");
-      
+
       if (connectWiFi(ssid, password)) {
         currentMode = MODE_STATION;
-        
+
         // 设置mDNS
         setupMDNS();
-        
+
         // 初始化I2S
         Serial.println("初始化I2S...");
         i2s_install();
         i2s_setpin();
         i2s_start(I2S_PORT);
-        
+
         // 启动音频服务器
         audioServer.begin();
         Serial.println("音频服务器启动在端口 8888");
-        
+
         // 启动状态服务器
         statusServer.begin();
         Serial.println("状态服务器启动在端口 8889");
-        
+
         // 初始化UDP
         udp.begin(UDP_PORT);
         Serial.println("UDP广播启动在端口 8890");
-        
+
         // 设置Web状态页面
         server.on("/", []() {
           String html = "<html><body>";
@@ -405,7 +405,7 @@ void setup() {
         server.on("/start_recording", HTTP_POST, handleStartRecording);
         server.on("/stop_recording", HTTP_POST, handleStopRecording);
         server.begin();
-        
+
         Serial.println("系统就绪!");
         Serial.println("=================================");
         Serial.println("设备信息:");
@@ -433,20 +433,19 @@ void loop() {
   if (currentMode == MODE_AP) {
     dnsServer.processNextRequest();
     server.handleClient();
-  } 
-  else if (currentMode == MODE_STATION) {
+  } else if (currentMode == MODE_STATION) {
     // 处理Web请求
     server.handleClient();
-    
+
     // mDNS不需要update（ESP32版本）
     // MDNS.update(); // 这行在ESP32中不需要
-    
+
     // 发送UDP广播
     sendUDPBroadcast();
-    
+
     // 处理状态查询
     handleStatusClients();
-    
+
     // 处理音频客户端连接
     if (audioServer.hasClient()) {
       if (audioClient && audioClient.connected()) {
@@ -459,46 +458,88 @@ void loop() {
         Serial.print("客户端IP: ");
         Serial.println(audioClient.remoteIP());
         streaming = true;
-        
-        // 发送欢迎消息（可选）
-        audioClient.println("ESP32-AUDIO-STREAM-V1.0");
       }
     }
-    
+
     // 检查客户端断开
     if (audioClient && !audioClient.connected()) {
       Serial.println("音频客户端已断开");
       streaming = false;
       audioClient.stop();
     }
-    
+
     // 发送音频数据（仅在录音激活时）
+    // 在loop()函数中修改音频处理部分
     if (streaming && audioClient && audioClient.connected() && recording_active) {
       size_t bytesIn = 0;
-      esp_err_t result = i2s_read(I2S_PORT, &sBuffer, bufferLen * sizeof(int32_t), &bytesIn, portMAX_DELAY);
-      
+      esp_err_t result = i2s_read(I2S_PORT, &sBuffer, bufferLen * sizeof(int32_t),
+                                  &bytesIn, (100 / portTICK_PERIOD_MS));
+
       if (result == ESP_OK && bytesIn > 0) {
         int samples = bytesIn / sizeof(int32_t);
-        
-        // 转换为16位并发送
-        for (int i = 0; i < samples; i++) {
-          audioBuffer[i] = (int16_t)(sBuffer[i] >> 14);
+
+        // 详细调试：查看原始数据和不同转换方式的结果
+        static int debugCount = 0;
+        if (debugCount++ % 50 == 0) {  // 每50次打印一次
+          Serial.println("\n===== I2S数据分析 =====");
+          Serial.printf("原始32位数据 (前5个):\n");
+          for (int i = 0; i < min(5, samples); i++) {
+            Serial.printf("  [%d] HEX: 0x%08X, DEC: %d\n", i, sBuffer[i], sBuffer[i]);
+          }
+
+          Serial.println("\n不同位移的结果:");
+          for (int i = 0; i < min(3, samples); i++) {
+            Serial.printf("  样本[%d]:\n", i);
+            Serial.printf("    >>8  = %d\n", (int16_t)(sBuffer[i] >> 8));
+            Serial.printf("    >>12 = %d\n", (int16_t)(sBuffer[i] >> 12));
+            Serial.printf("    >>14 = %d\n", (int16_t)(sBuffer[i] >> 14));
+            Serial.printf("    >>16 = %d\n", (int16_t)(sBuffer[i] >> 16));
+          }
+          Serial.println("====================\n");
         }
-        
-        // 添加简单的数据包头（可选）
+
+        // 尝试不同的转换方式
+        // 方案1: >>14 (WebSocket版本使用的)
+        for (int i = 0; i < samples; i++) {
+          int32_t sample = sBuffer[i] >> 14;
+          audioBuffer[i] = (int16_t)sample;
+        }
+
+        // 计算并显示音频特征
+        int16_t maxVal = 0;
+        int16_t minVal = 0;
+        int32_t sum = 0;
+
+        for (int i = 0; i < samples; i++) {
+          if (audioBuffer[i] > maxVal) maxVal = audioBuffer[i];
+          if (audioBuffer[i] < minVal) minVal = audioBuffer[i];
+          sum += audioBuffer[i];
+        }
+
+        float avg = (float)sum / samples;
+
+        // 计算RMS
+        float rms = 0;
+        for (int i = 0; i < samples; i++) {
+          float sample = (float)audioBuffer[i];
+          rms += sample * sample;
+        }
+        rms = sqrt(rms / samples);
+
+        // 发送数据包
         uint16_t packetSize = samples * sizeof(int16_t);
         audioClient.write((uint8_t*)&packetSize, sizeof(packetSize));
         audioClient.write((uint8_t*)audioBuffer, packetSize);
-        
-        // 调试输出（避免过多输出）
+
+        // 输出统计信息
         static unsigned long lastDebug = 0;
         if (millis() - lastDebug > 1000) {
           lastDebug = millis();
-          Serial.printf("正在录音传输音频数据: %d 字节\n", packetSize);
+          Serial.printf("音频统计 - RMS: %.2f, 最大: %d, 最小: %d, 平均: %.2f, 包: %d字节\n",
+                        rms, maxVal, minVal, avg, packetSize);
         }
       }
     }
-    
     // 检查WiFi连接状态
     static unsigned long lastCheck = 0;
     if (millis() - lastCheck > 10000) {
@@ -509,6 +550,6 @@ void loop() {
       }
     }
   }
-  
+
   delay(1);
 }
